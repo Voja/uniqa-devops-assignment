@@ -1,0 +1,23 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
+!*.tfvars.example
+crash.log
+tfplan
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+# Local / secrets
+.env
+*.pem
+*.json.local
+# Build artifacts
+app.zip
