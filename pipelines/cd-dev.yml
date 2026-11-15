@@ -108,7 +108,16 @@ jobs:
             --output none
           echo "APP_VERSION=${GITHUB_SHA::7}"
 
-      # Waits for /health (env=dev), then creates and lists a transaction. Fails the job on any error.
+      # Changing an app setting restarts the container asynchronously; restart explicitly so the
+      # rollout is deterministic and the smoke test below can wait for the NEW version.
+      - name: Restart Web App
+        run: |
+          az webapp restart \
+            --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
+
+      # Phase 1 waits until /health reports version=<sha> and env=dev (new container is live),
+      # phase 2 creates and lists a transaction with retries. Fails the job on any error.
       - name: Smoke test
         run: bash scripts/smoke-test.sh "${{ vars.APP_URL }}" dev "${GITHUB_SHA::7}"
 

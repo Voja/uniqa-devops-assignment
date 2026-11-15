@@ -79,6 +79,14 @@ jobs:
             --output none
           echo "APP_VERSION=${SOURCE_SHA::7} (from CD - DEV run ${SOURCE_RUN_ID})"
 
+      # Explicit restart: deterministic rollout instead of relying on the implicit async one.
+      - name: Restart Web App
+        run: |
+          az webapp restart \
+            --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}"
+
+      # Waits for /health to report version=<sha> and env=test, then exercises the API with retries.
       - name: Smoke test (expects env=test)
         run: bash scripts/smoke-test.sh "${{ vars.APP_URL }}" test "${SOURCE_SHA::7}"
 
