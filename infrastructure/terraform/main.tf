@@ -31,6 +31,14 @@ resource "azurerm_application_insights" "main" {
 # ---------------------------------------------------------------------------
 # 3. Linux Web App on the EXISTING App Service Plan
 # ---------------------------------------------------------------------------
+# Flask session-signing key. Generated per environment by Terraform, stored only in (remote,
+# private) state and in the App Service settings - never in the repo, tfvars or pipeline.
+# A fixed key per environment is required so all instances validate the same flash cookies.
+resource "random_password" "flask_secret_key" {
+  length  = 48
+  special = false # alphanumeric only: no quoting issues in env vars or the portal
+}
+
 resource "azurerm_linux_web_app" "main" {
   name = local.app_name
   # Kept in the shared RG for simplicity of this assessment; in production the app would get its
@@ -77,7 +85,8 @@ resource "azurerm_linux_web_app" "main" {
       SCM_DO_BUILD_DURING_DEPLOYMENT             = "true" # Oryx builds requirements.txt on zip deploy
       WEBSITES_PORT                              = "8000"
       APPLICATIONINSIGHTS_CONNECTION_STRING      = azurerm_application_insights.main.connection_string
-      ApplicationInsightsAgent_EXTENSION_VERSION = "~3" # codeless App Insights agent
+      ApplicationInsightsAgent_EXTENSION_VERSION = "~3"                                    # codeless App Insights agent
+      SECRET_KEY                                 = random_password.flask_secret_key.result # Flask session key
     },
     var.app_settings,
   )

@@ -57,6 +57,7 @@ binding and a free App Service managed certificate for `<env>.stefanovic-devops.
 | Private Endpoint (inbound) | `azurerm_private_endpoint.webapp` in `snet-private-endpoints`, subresource `sites`, DNS group → `privatelink.azurewebsites.net` |
 | VNet Integration (outbound) | `azurerm_linux_web_app.main.virtual_network_subnet_id = data.azurerm_subnet.integration.id` + `site_config.vnet_route_all_enabled = true` |
 | Monitoring | `azurerm_application_insights.main` (workspace-based), `azurerm_monitor_diagnostic_setting.webapp` → Log Analytics |
+| Secret management | `random_password.flask_secret_key` → `app_settings.SECRET_KEY`; SQL password via `TF_VAR_sql_admin_password` → `connection_string`. Secrets exist only in remote state and App Service settings, never in the repo |
 
 ## Why `public_network_access_enabled` stays `true`
 

@@ -21,6 +21,9 @@ explicit: a reviewer can see exactly which production controls were traded for c
   ever lives in Terraform state (remote state in a private storage container).
 - The app receives its SQL connection string from App Service **Connection Strings**
   (`SQLCONNSTR_TransactionsDb`), never from code or the zip package.
+- The Flask session key (`SECRET_KEY`) is generated per environment by Terraform (`random_password`)
+  and injected as an App Service app setting; the code has no hard-coded fallback (a random
+  per-process key is used only when the variable is absent, i.e. locally and in tests).
 - Pipelines read `secrets.AZURE_CREDENTIALS` (service principal JSON) and GitHub Environment
   variables; nothing sensitive is hard-coded in YAML.
 

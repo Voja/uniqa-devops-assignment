@@ -1,0 +1,190 @@
+{#- Operations console for the Transactions Service. Server-rendered; the only JS is the health pill. -#}
+{%- macro arrow() -%}
+<li class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 12h14m-5-5 5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></li>
+{%- endmacro -%}
+<!doctype html>
+<html lang="en" data-env="{{ env }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Transactions · {{ env }}</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b1220'/%3E%3Cpath d='M9 11h14M16 11v11' stroke='%233b82f6' stroke-width='3' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <div class="glow" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <h1>Transactions Service</h1>
+      </div>
+      <div class="meta">
+        <span class="badge" title="APP_ENV">{{ env }}</span>
+        <span class="chip mono" title="APP_VERSION">{{ version }}</span>
+        <span class="chip mono chip-host" title="Hostname">{{ hostname }}</span>
+        <span id="health-pill" class="pill" data-state="pending" aria-live="polite">
+          <span class="dot" aria-hidden="true"></span>
+          <span class="pill-text">checking…</span>
+        </span>
+      </div>
+    </div>
+  </header>
+
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    <div class="flashes" role="status">
+      {% for category, message in messages %}
+      <div class="flash flash-{{ category }}">{{ message }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+    {% endwith %}
+
+    {# (b) Request path: Internet -> App Service -> VNet Integration -> Private Endpoint -> SQL #}
+    <section class="card" aria-labelledby="path-title">
+      <h2 id="path-title" class="card-title">Request path</h2>
+      <ol class="flow">
+        <li class="node">
+          <span class="node-kicker">Client</span>
+          <span class="node-label">Internet</span>
+        </li>
+        {{ arrow() }}
+        <li class="node">
+          <span class="node-kicker">App Service</span>
+          <span class="node-label mono">{{ site_name }}</span>
+        </li>
+        {{ arrow() }}
+        <li class="node">
+          <span class="node-kicker">VNet Integration</span>
+          <span class="node-label mono">{{ private_ip }}</span>
+        </li>
+        {{ arrow() }}
+        <li class="node">
+          <span class="node-kicker">Private Endpoint</span>
+          <span class="node-label">privatelink.database.windows.net</span>
+        </li>
+        {{ arrow() }}
+        <li class="node node-db" data-state="{{ 'ok' if db.ok else 'down' }}">
+          <span class="node-kicker">Azure SQL</span>
+          <span class="node-label mono">{{ sql_host }}</span>
+          <span class="node-status">
+            <span class="dot" aria-hidden="true"></span>
+            {% if db.ok %}connected · {{ db.latency_ms }} ms{% else %}unreachable{% endif %}
+          </span>
+        </li>
+      </ol>
+    </section>
+
+    {# (c) Stat tiles #}
+    <section class="tiles" aria-label="Summary">
+      <div class="card tile">
+        <span class="tile-label">Total transactions</span>
+        <span class="tile-value mono">{{ stats.count if stats else "—" }}</span>
+      </div>
+      <div class="card tile">
+        <span class="tile-label">Total amount</span>
+        <span class="tile-value mono">{{ "%.2f"|format(stats.total) if stats else "—" }}</span>
+      </div>
+      <div class="card tile">
+        <span class="tile-label">Last transaction</span>
+        <span class="tile-value tile-value-sm mono">{{ stats.last_at if stats and stats.last_at else "—" }}</span>
+      </div>
+    </section>
+
+    {# (d) Form + table #}
+    <section class="columns">
+      <div class="card">
+        <h2 class="card-title">Add transaction</h2>
+        <form method="post" action="{{ url_for('form_create_transaction') }}" class="form" novalidate>
+          <div class="field">
+            <label for="amount">Amount</label>
+            <input id="amount" name="amount" type="text" inputmode="decimal" placeholder="12.50" required autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="description">Description</label>
+            <input id="description" name="description" type="text" maxlength="200" placeholder="What was this for?" autocomplete="off">
+          </div>
+          <button type="submit" class="btn">Add transaction</button>
+          <p class="hint">Submits to <code>POST /transactions/form</code>; the JSON API at <code>POST /transactions</code> is unchanged.</p>
+        </form>
+      </div>
+
+      <div class="card card-table">
+        <h2 class="card-title">Latest transactions <span class="muted">· last {{ transactions|length }}</span></h2>
+        {% if transactions %}
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th class="num">ID</th><th class="num">Amount</th><th>Description</th><th>Created at</th></tr>
+            </thead>
+            <tbody>
+              {% for t in transactions %}
+              <tr>
+                <td class="num mono">{{ t.id }}</td>
+                <td class="num mono">{{ "%.2f"|format(t.amount) }}</td>
+                <td>{{ t.description or "—" }}</td>
+                <td class="mono muted">{{ t.created_at }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% elif db.ok %}
+        <p class="empty">No transactions yet. Add one on the left or <code>POST /transactions</code>.</p>
+        {% else %}
+        <p class="empty">Database unreachable — transactions cannot be listed.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    {# (e) Runtime #}
+    <section class="card" aria-labelledby="runtime-title">
+      <h2 id="runtime-title" class="card-title">Runtime</h2>
+      <dl class="kv">
+        <div><dt>Python</dt><dd class="mono">{{ runtime.python }}</dd></div>
+        <div><dt>Backend</dt><dd>{{ runtime.backend }}</dd></div>
+        <div><dt>Instance</dt><dd class="mono">{{ runtime.instance }}</dd></div>
+        <div><dt>Region</dt><dd>{{ runtime.region }}</dd></div>
+        {% for key, value in settings.items() %}
+        <div><dt class="mono">{{ key }}</dt><dd class="mono">{{ value }}</dd></div>
+        {% endfor %}
+      </dl>
+    </section>
+  </main>
+
+  <footer class="container footer">
+    <span>Provisioned with Terraform · Deployed by GitHub Actions · Monitored by Application Insights</span>
+    <nav aria-label="JSON endpoints">
+      <a href="{{ url_for('health') }}">/health</a>
+      <a href="{{ url_for('health_deep') }}">/health/deep</a>
+      <a href="{{ url_for('api_list_transactions') }}">/transactions</a>
+    </nav>
+  </footer>
+
+  <script>
+    // Live health pill: GET /health every 10 s and show status + round-trip latency.
+    (function () {
+      var pill = document.getElementById("health-pill");
+      var text = pill.querySelector(".pill-text");
+      function check() {
+        var started = performance.now();
+        fetch("{{ url_for('health') }}", { cache: "no-store" })
+          .then(function (r) { if (!r.ok) { throw new Error(r.status); } return r.json(); })
+          .then(function () {
+            pill.dataset.state = "ok";
+            text.textContent = "healthy · " + Math.round(performance.now() - started) + " ms";
+          })
+          .catch(function () {
+            pill.dataset.state = "down";
+            text.textContent = "unreachable";
+          });
+      }
+      check();
+      setInterval(check, 10000);
+    })();
+  </script>
+</body>
+</html>

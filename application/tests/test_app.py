@@ -63,3 +63,38 @@ def test_parse_sql_connection_string():
     # Non-default port and "Data Source"/"Initial Catalog" ADO.NET synonyms.
     cfg = parse_sql_connection_string("Data Source=tcp:h,1444;Initial Catalog=c;Uid=u;Pwd=p")
     assert cfg["server"] == "h" and cfg["port"] == 1444 and cfg["database"] == "c"
+
+
+def test_index_renders_env(monkeypatch, client):
+    monkeypatch.setenv("APP_ENV", "test")
+    resp = client.get("/")
+    assert resp.status_code == 200
+    html = resp.get_data(as_text=True)
+    assert "Transactions Service" in html
+    assert 'data-env="test"' in html and ">test<" in html  # env badge
+    assert "Request path" in html and "Private Endpoint" in html  # request-path strip
+
+
+def test_form_create_redirects(client):
+    resp = client.post("/transactions/form", data={"amount": "42.10", "description": "lunch"})
+    assert resp.status_code == 302
+    assert resp.headers["Location"].endswith("/")
+    page = client.get("/").get_data(as_text=True)
+    assert "lunch" in page and "42.10" in page
+    assert "Transaction #1 added." in page  # success flash shown once after redirect
+
+
+def test_form_invalid_amount_shows_error(client):
+    resp = client.post("/transactions/form", data={"amount": "abc", "description": "x"})
+    assert resp.status_code == 302
+    page = client.get("/").get_data(as_text=True)
+    assert "Amount is required and must be a number." in page
+    assert client.get("/transactions").get_json() == []  # nothing was inserted
+
+
+def test_health_deep_ok(client):
+    body = client.get("/health/deep").get_json()
+    assert body["status"] == "ok"
+    assert body["db"]["ok"] is True
+    assert body["db"]["backend"] == "sqlite"
+    assert isinstance(body["db"]["latency_ms"], int)
