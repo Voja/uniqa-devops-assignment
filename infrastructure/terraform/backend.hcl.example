@@ -1,0 +1,6 @@
+# Copy to backend.hcl (gitignored) and fill in from `terraform output` of the bootstrap layer.
+# The state file name (key) is passed separately per environment:
+#   terraform init -backend-config=backend.hcl -backend-config="key=dev.tfstate"
+resource_group_name  = "rg-uniqa-shared"
+storage_account_name = "stuniqatfstateXXXXX" # bootstrap output: tfstate_storage_account_name
+container_name       = "tfstate"             # bootstrap output: tfstate_container_name

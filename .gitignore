@@ -4,6 +4,8 @@
 .terraform/
 *.tfvars
 !*.tfvars.example
+!infrastructure/terraform/envs/*.tfvars
+backend.hcl
 crash.log
 tfplan
 # Python
