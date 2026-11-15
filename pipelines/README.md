@@ -55,7 +55,7 @@ scripts/sync-pipelines.sh --check  # what CI runs
 
 | Name | Value |
 |---|---|
-| `AZURE_CREDENTIALS` | Service-principal JSON (`clientId`, `clientSecret`, `subscriptionId`, `tenantId`), e.g. output of `az ad sp create-for-rbac --sdk-auth`. Scope: *Website Contributor* on `rg-uniqa-shared` (see [security/README.md](../security/README.md)). |
+| `AZURE_CREDENTIALS` | Service-principal JSON (`clientId`, `clientSecret`, `subscriptionId`, `tenantId`), e.g. output of `az ad sp create-for-rbac --sdk-auth`. Scope: *Contributor* on the subscription for this assignment (least-privilege alternative: *Website Contributor* on `rg-uniqa-shared`) (see [security/README.md](../security/README.md)). |
 
 ### Variable (repository)
 
