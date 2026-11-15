@@ -20,6 +20,37 @@ def _is_mssql():
     return bool(os.environ.get(CONN_ENV))
 
 
+def _ph():
+    """Parameter placeholder for the active backend: pymssql uses %s, sqlite uses ?."""
+    return "%s" if _is_mssql() else "?"
+
+
+def parse_sql_connection_string(cs):
+    """Parse an ADO.NET-style connection string into pymssql.connect() kwargs.
+
+    Example input (as produced by Terraform / App Service):
+      "Server=tcp:host.database.windows.net,1433;Database=mydb;Uid=user;Pwd=secret;Encrypt=yes"
+    Keys are case-insensitive; Uid/User ID and Pwd/Password aliases are both accepted.
+    """
+    parts = {}
+    for item in cs.split(";"):
+        if "=" in item:
+            key, value = item.split("=", 1)
+            parts[key.strip().lower()] = value.strip()
+    # "Server=tcp:host,port" -> strip the protocol prefix and split off the optional port.
+    server = parts.get("server", parts.get("data source", ""))
+    if server.lower().startswith("tcp:"):
+        server = server[4:]
+    host, _, port = server.partition(",")
+    return {
+        "server": host,
+        "port": int(port) if port else 1433,
+        "database": parts.get("database", parts.get("initial catalog", "")),
+        "user": parts.get("uid", parts.get("user id", "")),
+        "password": parts.get("pwd", parts.get("password", "")),
+    }
+
+
 def reset_db():
     """Drop the in-memory sqlite DB so every test starts from a clean state."""
     global _sqlite, _schema_ready
@@ -29,12 +60,15 @@ def reset_db():
 
 
 def get_connection():
-    """Return a DB connection: pyodbc for SQL Server, sqlite3 in-memory otherwise."""
+    """Return a DB connection: pymssql for SQL Server, sqlite3 in-memory otherwise."""
     global _sqlite, _schema_ready
     if _is_mssql():
-        import pyodbc  # lazy import: tests/local runs don't need the ODBC driver
+        import pymssql  # lazy import: pure wheel, no ODBC driver; tests never need it
 
-        conn = pyodbc.connect(os.environ[CONN_ENV])
+        cfg = parse_sql_connection_string(os.environ[CONN_ENV])
+        conn = pymssql.connect(server=cfg["server"], port=cfg["port"], user=cfg["user"],
+                               password=cfg["password"], database=cfg["database"],
+                               login_timeout=30, autocommit=False)
     else:
         if _sqlite is None:
             _sqlite = sqlite3.connect(":memory:", check_same_thread=False)
@@ -88,18 +122,19 @@ def create_transaction():
     description = str(data.get("description", ""))[:200]
     conn = get_connection()
     cur = conn.cursor()
-    # Parameterised queries prevent SQL injection; both drivers use '?' placeholders.
-    if _is_mssql():  # OUTPUT returns the new identity in the same statement
-        cur.execute("INSERT INTO Transactions (Amount, Description) OUTPUT INSERTED.Id "
-                    "VALUES (?, ?)", (amount, description))
-        new_id = int(cur.fetchone()[0])
-    else:
-        cur.execute("INSERT INTO Transactions (Amount, Description) VALUES (?, ?)",
-                    (amount, description))
-        new_id = cur.lastrowid
+    # Only the placeholder token (%s or ?) is interpolated; values are always bound parameters.
+    p = _ph()
+    if _is_mssql():  # T-SQL: OUTPUT returns the new identity in the same statement
+        sql = ("INSERT INTO Transactions (Amount, Description) OUTPUT INSERTED.Id "
+               f"VALUES ({p}, {p})")  # nosec B608
+    else:  # sqlite: the new id is available via cursor.lastrowid
+        sql = f"INSERT INTO Transactions (Amount, Description) VALUES ({p}, {p})"  # nosec B608
+    cur.execute(sql, (amount, description))
+    new_id = int(cur.fetchone()[0]) if _is_mssql() else cur.lastrowid
     conn.commit()
-    cur.execute("SELECT Id, Amount, Description, CreatedAt FROM Transactions WHERE Id = ?",
-                (new_id,))
+    sql = ("SELECT Id, Amount, Description, CreatedAt FROM Transactions "
+           f"WHERE Id = {p}")  # nosec B608
+    cur.execute(sql, (new_id,))
     return jsonify(_to_dict(cur.fetchone())), 201
 
 
