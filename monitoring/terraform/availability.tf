@@ -9,9 +9,9 @@ resource "azurerm_application_insights_standard_web_test" "health" {
   resource_group_name     = data.azurerm_resource_group.shared.name
   location                = data.azurerm_application_insights.env[each.key].location # must match the component
   application_insights_id = data.azurerm_application_insights.env[each.key].id
-  geo_locations           = ["emea-nl-ams-azr", "emea-fr-pra-edge", "us-va-ash-azr"] # Amsterdam, Dublin, Virginia
-  frequency               = 300                                                    # seconds between runs from each location
-  timeout                 = 30                                                     # seconds before a run counts as failed
+  geo_locations           = ["emea-nl-ams-azr", "emea-fr-pra-edge", "us-va-ash-azr"] # Amsterdam, Paris, Virginia
+  frequency               = 300                                                      # seconds between runs from each location
+  timeout                 = 30                                                       # seconds before a run counts as failed
   enabled                 = true
   retry_enabled           = true # one automatic retry filters transient network blips
   description             = "GET /health on ${each.key} must return 200 with status=ok."

@@ -1,0 +1,198 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="720" viewBox="0 0 1200 720" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12">
+  <title>Transactions Service – Azure architecture</title>
+  <defs>
+    <marker id="a-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#3b82f6"/></marker>
+    <marker id="a-green" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#22c55e"/></marker>
+    <marker id="a-amber" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#f59e0b"/></marker>
+    <marker id="a-muted" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#8b98ad"/></marker>
+    <style>
+      .box   { fill:#111a2e; stroke:rgba(255,255,255,0.14); stroke-width:1; }
+      .box-b { fill:#111a2e; stroke:#3b82f6; stroke-width:1.2; }
+      .box-g { fill:#111a2e; stroke:#22c55e; stroke-width:1.2; }
+      .box-a { fill:#111a2e; stroke:#f59e0b; stroke-width:1.2; }
+      .zone  { fill:rgba(59,130,246,0.05); stroke:rgba(59,130,246,0.55); stroke-width:1.2; stroke-dasharray:6 4; }
+      .sub   { fill:rgba(255,255,255,0.025); stroke:rgba(255,255,255,0.18); stroke-width:1; stroke-dasharray:3 3; }
+      .t     { fill:#e6edf3; }
+      .tb    { fill:#e6edf3; font-weight:600; }
+      .tm    { fill:#8b98ad; font-size:11px; }
+      .tz    { fill:#93c5fd; font-size:11px; font-weight:600; letter-spacing:0.04em; }
+      .mono  { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11px; }
+      .l-blue  { stroke:#3b82f6; stroke-width:1.6; fill:none; }
+      .l-green { stroke:#22c55e; stroke-width:1.6; fill:none; }
+      .l-amber { stroke:#f59e0b; stroke-width:1.6; fill:none; stroke-dasharray:6 4; }
+      .l-muted { stroke:#8b98ad; stroke-width:1.3; fill:none; stroke-dasharray:4 4; }
+      .lbl   { fill:#0b1220; }
+    </style>
+  </defs>
+
+  <!-- background + faint glow -->
+  <rect width="1200" height="720" fill="#0b1220"/>
+  <ellipse cx="600" cy="0" rx="520" ry="150" fill="rgba(59,130,246,0.10)"/>
+
+  <!-- title -->
+  <text x="40" y="44" class="tb" font-size="20">Transactions Service — Azure architecture</text>
+  <text x="40" y="66" class="tm">rg-uniqa-shared · francecentral · one Web App per environment (dev, test) on a shared Linux plan · provisioned with Terraform</text>
+
+  <!-- legend -->
+  <g transform="translate(760,28)">
+    <rect x="0" y="0" width="400" height="64" rx="10" class="box"/>
+    <line x1="14" y1="18" x2="44" y2="18" class="l-blue" marker-end="url(#a-blue)"/><text x="52" y="22" class="tm">user / HTTP traffic</text>
+    <line x1="14" y1="38" x2="44" y2="38" class="l-green" marker-end="url(#a-green)"/><text x="52" y="42" class="tm">app → SQL data path (private)</text>
+    <line x1="210" y1="18" x2="240" y2="18" class="l-amber" marker-end="url(#a-amber)"/><text x="248" y="22" class="tm">deployment</text>
+    <line x1="210" y1="38" x2="240" y2="38" class="l-muted" marker-end="url(#a-muted)"/><text x="248" y="42" class="tm">telemetry / DNS</text>
+  </g>
+
+  <!-- GitHub Actions -->
+  <g transform="translate(40,110)">
+    <rect width="210" height="76" rx="12" class="box-a"/>
+    <text x="16" y="26" class="tb">GitHub Actions</text>
+    <text x="16" y="46" class="tm">CI · QA · CD-DEV · CD-TEST (approval)</text>
+    <text x="16" y="63" class="tm mono">azure/login · sp-uniqa-devops-github</text>
+  </g>
+
+  <!-- Internet -->
+  <g transform="translate(40,330)">
+    <rect width="210" height="70" rx="12" class="box-b"/>
+    <text x="16" y="26" class="tb">Internet / users</text>
+    <text x="16" y="46" class="tm mono">https://dev.stefanovic-devops.xyz</text>
+    <text x="16" y="61" class="tm mono">https://test.stefanovic-devops.xyz</text>
+  </g>
+
+  <!-- Azure DNS -->
+  <g transform="translate(40,450)">
+    <rect width="210" height="84" rx="12" class="box"/>
+    <text x="16" y="24" class="tb">Azure DNS · public zone</text>
+    <text x="16" y="42" class="tm mono">stefanovic-devops.xyz</text>
+    <text x="16" y="58" class="tm mono">CNAME &lt;env&gt; → *.azurewebsites.net</text>
+    <text x="16" y="74" class="tm mono">TXT asuid.&lt;env&gt; (ownership)</text>
+  </g>
+
+  <!-- App Service -->
+  <g transform="translate(310,300)">
+    <rect width="250" height="130" rx="12" class="box-b"/>
+    <text x="16" y="26" class="tb">App Service (Linux)</text>
+    <text x="16" y="45" class="tm">plan asp-uniqa-linux · B1 · existing</text>
+    <text x="16" y="66" class="t mono">app-uniqa-&lt;env&gt;-stefanovic</text>
+    <text x="16" y="84" class="tm">Python 3.12 · gunicorn · Flask</text>
+    <text x="16" y="101" class="tm">HTTPS only · TLS 1.2 · health check /health</text>
+    <text x="16" y="118" class="tm">managed cert · app settings · connection string</text>
+  </g>
+
+  <!-- VNet -->
+  <rect x="600" y="110" width="400" height="460" rx="14" class="zone"/>
+  <text x="616" y="134" class="tz">VNET vnet-uniqa · 10.10.0.0/16</text>
+
+  <!-- integration subnet -->
+  <rect x="620" y="150" width="360" height="104" rx="10" class="sub"/>
+  <text x="632" y="170" class="tm">snet-appsvc-integration · 10.10.1.0/24</text>
+  <text x="632" y="184" class="tm">delegated to Microsoft.Web/serverFarms</text>
+  <g transform="translate(640,194)">
+    <rect width="320" height="48" rx="8" class="box-b"/>
+    <text x="12" y="20" class="tb">VNet integration (outbound)</text>
+    <text x="12" y="37" class="tm mono">app egress 10.10.1.x · vnet_route_all = true</text>
+  </g>
+
+  <!-- private endpoint subnet -->
+  <rect x="620" y="270" width="360" height="166" rx="10" class="sub"/>
+  <text x="632" y="290" class="tm">snet-private-endpoints · 10.10.2.0/24</text>
+  <g transform="translate(640,302)">
+    <rect width="155" height="118" rx="8" class="box-b"/>
+    <text x="10" y="20" class="tb">PE · Web App</text>
+    <text x="10" y="38" class="tm mono">pe-app-uniqa-&lt;env&gt;-</text>
+    <text x="10" y="52" class="tm mono">stefanovic</text>
+    <text x="10" y="74" class="t mono">dev  10.10.2.5</text>
+    <text x="10" y="90" class="t mono">test 10.10.2.6</text>
+    <text x="10" y="108" class="tm">inbound, private</text>
+  </g>
+  <g transform="translate(805,302)">
+    <rect width="155" height="118" rx="8" class="box-g"/>
+    <text x="10" y="20" class="tb">PE · SQL Server</text>
+    <text x="10" y="38" class="tm mono">pe-sql-uniqa-bisn5</text>
+    <text x="10" y="60" class="tm mono">privatelink.</text>
+    <text x="10" y="74" class="tm mono">database.windows.net</text>
+    <text x="10" y="96" class="tm">subresource sqlServer</text>
+    <text x="10" y="108" class="tm">TCP 1433</text>
+  </g>
+
+  <!-- private DNS zones -->
+  <g transform="translate(620,452)">
+    <rect width="360" height="100" rx="10" class="box"/>
+    <text x="12" y="22" class="tb">Private DNS zones (linked to the VNet)</text>
+    <text x="12" y="44" class="tm mono">privatelink.azurewebsites.net</text>
+    <text x="12" y="60" class="tm mono">privatelink.database.windows.net</text>
+    <text x="12" y="84" class="tm">resolve platform hostnames to 10.10.2.x inside the VNet</text>
+  </g>
+
+  <!-- Azure SQL -->
+  <g transform="translate(1030,300)">
+    <rect width="150" height="122" rx="12" class="box-g"/>
+    <text x="12" y="24" class="tb">Azure SQL</text>
+    <text x="12" y="42" class="tm">existing server</text>
+    <text x="12" y="60" class="t mono">sql-uniqa-bisn5</text>
+    <text x="12" y="82" class="tm mono">sqldb-uniqa-dev</text>
+    <text x="12" y="98" class="tm mono">sqldb-uniqa-test</text>
+    <text x="12" y="114" class="tm">Basic · TLS 1.2</text>
+  </g>
+
+  <!-- observability row -->
+  <g transform="translate(40,600)">
+    <rect width="210" height="80" rx="12" class="box"/>
+    <text x="16" y="24" class="tb">Terraform state</text>
+    <text x="16" y="42" class="tm mono">stuniqatfstatebisn5 / tfstate</text>
+    <text x="16" y="58" class="tm mono">dev · test · monitoring .tfstate</text>
+    <text x="16" y="72" class="tm">bootstrap: local state</text>
+  </g>
+  <g transform="translate(310,600)">
+    <rect width="200" height="80" rx="12" class="box"/>
+    <text x="16" y="24" class="tb">Log Analytics</text>
+    <text x="16" y="42" class="tm mono">log-uniqa</text>
+    <text x="16" y="58" class="tm">HTTP / console / app logs</text>
+    <text x="16" y="72" class="tm">AllMetrics · KQL</text>
+  </g>
+  <g transform="translate(540,600)">
+    <rect width="200" height="80" rx="12" class="box"/>
+    <text x="16" y="24" class="tb">Application Insights</text>
+    <text x="16" y="42" class="tm mono">appi-uniqa-&lt;env&gt;</text>
+    <text x="16" y="58" class="tm">requests · SQL dependencies</text>
+    <text x="16" y="72" class="tm">availability tests · 3 regions</text>
+  </g>
+  <g transform="translate(770,600)">
+    <rect width="230" height="80" rx="12" class="box"/>
+    <text x="16" y="24" class="tb">Azure Monitor alerts</text>
+    <text x="16" y="42" class="tm">SQL: CPU · DTU · storage · failed conn · deadlocks</text>
+    <text x="16" y="58" class="tm">App: 5xx · latency · health · availability</text>
+    <text x="16" y="72" class="tm mono">→ ag-uniqa-oncall (e-mail)</text>
+  </g>
+
+  <!-- arrows -->
+  <!-- DNS resolves for users -->
+  <line x1="145" y1="450" x2="145" y2="402" class="l-muted" marker-end="url(#a-muted)"/>
+  <text x="152" y="432" class="tm">resolves</text>
+  <!-- Internet -> App Service -->
+  <line x1="250" y1="365" x2="308" y2="365" class="l-blue" marker-end="url(#a-blue)"/>
+  <text x="256" y="357" class="tm">HTTPS</text>
+  <!-- GitHub -> App Service -->
+  <path d="M250 150 C 330 150, 380 220, 410 298" class="l-amber" marker-end="url(#a-amber)"/>
+  <text x="300" y="222" class="tm">zip deploy · APP_VERSION · restart</text>
+  <!-- App Service -> VNet integration -->
+  <path d="M560 335 C 600 335, 610 218, 638 218" class="l-blue" marker-end="url(#a-blue)"/>
+  <text x="572" y="300" class="tm">VNet integration</text>
+  <!-- PE app -> App Service (inbound) -->
+  <path d="M640 380 C 610 380, 600 395, 562 395" class="l-blue" marker-end="url(#a-blue)"/>
+  <text x="566" y="420" class="tm">private endpoint</text>
+  <!-- VNet integration -> PE SQL -->
+  <path d="M900 242 C 900 270, 882 280, 882 300" class="l-green" marker-end="url(#a-green)"/>
+  <text x="908" y="272" class="tm">TCP 1433</text>
+  <!-- PE SQL -> Azure SQL -->
+  <line x1="960" y1="361" x2="1028" y2="361" class="l-green" marker-end="url(#a-green)"/>
+  <text x="962" y="353" class="tm">private link</text>
+  <!-- App Service -> App Insights / Log Analytics -->
+  <path d="M435 430 C 435 520, 640 520, 640 598" class="l-muted" marker-end="url(#a-muted)"/>
+  <text x="470" y="508" class="tm">telemetry (agent) · diagnostic settings</text>
+  <line x1="540" y1="640" x2="512" y2="640" class="l-muted" marker-end="url(#a-muted)"/>
+  <!-- SQL metrics -> alerts -->
+  <path d="M1105 422 C 1105 560, 900 560, 900 598" class="l-muted" marker-end="url(#a-muted)"/>
+  <text x="1010" y="565" class="tm">platform metrics</text>
+  <line x1="740" y1="640" x2="768" y2="640" class="l-muted" marker-end="url(#a-muted)"/>
+</svg>
