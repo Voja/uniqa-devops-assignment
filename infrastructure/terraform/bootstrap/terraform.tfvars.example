@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars (gitignored) and fill in the real values.
+
+# Required: target Azure subscription.
+subscription_id = "00000000-0000-0000-0000-000000000000"
+
+# Required: your workstation's public IPv4 (e.g. `curl -4 ifconfig.me`).
+# Only this address may reach the SQL Server over its public endpoint.
+admin_client_ip = "203.0.113.10"
+
+# Optional overrides (defaults shown).
+# project         = "uniqa"
+# location        = "northeurope"
+# asp_sku         = "B1"
+# sql_admin_login = "sqladminuser"
+# dns_zone_name   = "stefanovic-devops.xyz"
