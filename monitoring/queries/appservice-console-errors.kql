@@ -1,0 +1,10 @@
+// appservice-console-errors.kql
+// Where : Log Analytics (log-uniqa) -> Logs. Table fed by the Web App diagnostic setting (AppServiceConsoleLogs).
+// What  : gunicorn/Python stdout+stderr lines mentioning "error" or a Python "Traceback" in the last 24 h.
+// Why   : Catches crashes and startup failures (bad connection string, missing module) that never
+//         become HTTP requests and therefore never appear in App Insights `requests`.
+AppServiceConsoleLogs
+| where TimeGenerated > ago(24h)
+| where ResultDescription has_any ("error", "Traceback", "Exception")
+| project TimeGenerated, _ResourceId, Level, ResultDescription
+| order by TimeGenerated desc

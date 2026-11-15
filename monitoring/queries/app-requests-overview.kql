@@ -1,0 +1,13 @@
+// app-requests-overview.kql
+// Where : Application Insights (appi-uniqa-<env>) -> Logs, or Log Analytics (log-uniqa) using AppRequests
+// What  : Request volume and latency per endpoint over the last 24 h (count, avg, p95, success rate).
+// Why   : Baseline for the HttpResponseTime alert threshold and to spot slow endpoints.
+requests
+| where timestamp > ago(24h)
+| summarize
+    count            = count(),
+    avg_duration_ms  = round(avg(duration), 1),
+    p95_duration_ms  = round(percentile(duration, 95), 1),
+    success_rate_pct = round(100.0 * countif(success == true) / count(), 2)
+    by name
+| order by count desc

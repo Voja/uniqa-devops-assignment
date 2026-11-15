@@ -1,11 +1,12 @@
 # Checkov configuration used by CI (pipelines/ci.yml -> bridgecrewio/checkov-action, soft_fail: false).
-# Scans BOTH Terraform roots (infrastructure/terraform and its bootstrap/ sub-folder).
+# Scans all Terraform roots: infrastructure/terraform (+ its bootstrap/ sub-folder) and monitoring/terraform.
 # Every skipped check has a one-line justification; anything not listed here fails the build.
 # Run locally:  pip install checkov && checkov --config-file security/checkov.yml
 framework:
   - terraform
 directory:
   - infrastructure/terraform
+  - monitoring/terraform
 quiet: true   # only print failed checks
 compact: true # no code blocks in the output
 

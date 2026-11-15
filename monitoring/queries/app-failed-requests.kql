@@ -1,0 +1,9 @@
+// app-failed-requests.kql
+// Where : Application Insights (appi-uniqa-<env>) -> Logs
+// What  : Every request that ended in a server error (HTTP 5xx) in the last 24 h, newest first.
+// Why   : Drill-down for the app-<env>-http-5xx alert; operation_Id links to dependencies/exceptions.
+requests
+| where timestamp > ago(24h)
+| where toint(resultCode) >= 500
+| project timestamp, name, url, resultCode, duration, cloud_RoleInstance, operation_Id
+| order by timestamp desc

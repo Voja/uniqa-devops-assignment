@@ -1,0 +1,16 @@
+// app-dependencies-sql.kql
+// Where : Application Insights (appi-uniqa-<env>) -> Logs
+// What  : Outbound SQL calls made by the app in the last 24 h: volume, failures, latency per target.
+// Why   : Proves the app -> existing SQL Server path is observed end-to-end (via the codeless
+//         App Insights agent) and shows whether latency/errors originate in the database.
+dependencies
+| where timestamp > ago(24h)
+| where type == "SQL"
+| summarize
+    calls           = count(),
+    failed          = countif(success == false),
+    failure_pct     = round(100.0 * countif(success == false) / count(), 2),
+    avg_duration_ms = round(avg(duration), 1),
+    p95_duration_ms = round(percentile(duration, 95), 1)
+    by target, name
+| order by calls desc

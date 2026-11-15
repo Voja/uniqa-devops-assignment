@@ -4,7 +4,7 @@
 
 | File | Name | Trigger | What it does | Environment / approval |
 |---|---|---|---|---|
-| [ci.yml](ci.yml) | **CI** | push to `dev`, PR into `main`, manual | flake8 · black · bandit · pytest+coverage · builds `app.zip` · `terraform fmt/validate` (both roots) · Checkov · verifies the workflow mirror | none (read-only) |
+| [ci.yml](ci.yml) | **CI** | push to `dev`, PR into `main`, manual | flake8 · black · bandit · pytest+coverage · builds `app.zip` · `terraform fmt/validate` (application, bootstrap, monitoring roots) · Checkov · verifies the workflow mirror | none (read-only) |
 | [qa.yml](qa.yml) | **QA** | push of tag `QA` / `QA-*`, manual | flake8 statistics · black · bandit report · pylint ≥ 8 · pytest with `--cov-fail-under=80` · HTML coverage artifact · everything in the job summary | none |
 | [cd-dev.yml](cd-dev.yml) | **CD - DEV** | push to `main`, manual | quick tests → build `app.zip` → deploy to DEV Web App → set `APP_VERSION` → smoke test (`/health`, POST+GET `/transactions`) | GitHub Environment `dev` (no approval) |
 | [cd-prod.yml](cd-prod.yml) | **CD - TEST (promotion)** | `workflow_run` after a successful **CD - DEV**, or manual with `run_id` | downloads the **same** `app-package` artifact from the DEV run → deploy to TEST Web App → set `APP_VERSION` → smoke test | GitHub Environment `test` **with required reviewer → manual approval gate** |

@@ -1,0 +1,10 @@
+// appservice-http-5xx.kql
+// Where : Log Analytics (log-uniqa) -> Logs. Table fed by the Web App diagnostic setting (AppServiceHTTPLogs).
+// What  : Front-end access log entries with status >= 500 in the last 24 h, per app and URL.
+// Why   : Platform-level view of 5xx (includes errors returned before the app, e.g. 502/503 during
+//         container restarts) to compare against the in-app view in app-failed-requests.kql.
+AppServiceHTTPLogs
+| where TimeGenerated > ago(24h)
+| where ScStatus >= 500
+| project TimeGenerated, _ResourceId, CsMethod, CsUriStem, ScStatus, ScSubStatus, TimeTaken, CIp, UserAgent
+| order by TimeGenerated desc

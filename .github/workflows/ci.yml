@@ -96,9 +96,9 @@ jobs:
         with:
           terraform_wrapper: false # plain binary output, no wrapper noise
 
-      - name: terraform fmt -check (both roots)
-        run: terraform fmt -check -recursive -diff
-        working-directory: infrastructure/terraform
+      # One fmt pass over all three roots (application, bootstrap, monitoring).
+      - name: terraform fmt -check (all roots)
+        run: terraform fmt -check -recursive -diff infrastructure/terraform monitoring/terraform
 
       # -backend=false: no Azure credentials in CI, validation needs none.
       - name: terraform validate (application root)
@@ -109,14 +109,28 @@ jobs:
         run: terraform init -backend=false -input=false && terraform validate
         working-directory: infrastructure/terraform/bootstrap
 
+      - name: terraform validate (monitoring root)
+        run: terraform init -backend=false -input=false && terraform validate
+        working-directory: monitoring/terraform
+
       # Policy-as-code; the skip list with justifications lives in security/checkov.yml.
-      - name: Checkov (IaC security scan)
+      # The `directory` input overrides the config file's list, hence one step per tree.
+      - name: Checkov (infrastructure/terraform)
         uses: bridgecrewio/checkov-action@v12
         with:
           directory: infrastructure/terraform
           framework: terraform
           config_file: security/checkov.yml
           soft_fail: false # any unskipped failure fails CI
+          output_format: cli
+
+      - name: Checkov (monitoring/terraform)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: monitoring/terraform
+          framework: terraform
+          config_file: security/checkov.yml
+          soft_fail: false
           output_format: cli
 
   # ---------------------------------------------------------------------------
