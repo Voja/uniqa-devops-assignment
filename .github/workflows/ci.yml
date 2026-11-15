@@ -1,0 +1,134 @@
+# CI: fast feedback on every push to dev and on every PR into main.
+# Three independent jobs run in parallel: app quality, infra quality, pipeline-mirror check.
+name: "CI"
+
+on:
+  push:
+    branches: [dev]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# A newer push to the same branch cancels the older CI run (safe: CI never deploys).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least privilege: CI only reads the repo. Azure auth uses a service-principal secret, so no id-token.
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint, security-scan, test and package the Flask application.
+  # ---------------------------------------------------------------------------
+  app-quality:
+    name: Application quality
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: application
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip # cache keyed on requirements*.txt
+          cache-dependency-path: application/requirements*.txt
+
+      - name: Install dependencies (runtime + dev tools)
+        run: pip install -r requirements-dev.txt
+
+      - name: Lint (flake8)
+        run: flake8
+
+      - name: Format check (black)
+        run: black --check .
+
+      - name: Security scan (bandit)
+        run: bandit -q -r app.py
+
+      - name: Unit tests with coverage (pytest)
+        run: pytest --cov=. --cov-report=xml --cov-report=term -q
+
+      - name: Upload coverage.xml
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: application/coverage.xml
+          retention-days: 7
+
+      # Source + requirements.txt only: App Service builds dependencies itself
+      # (SCM_DO_BUILD_DURING_DEPLOYMENT=true set by Terraform), so no venv/wheels in the zip.
+      - name: Build deployment package (app.zip)
+        run: |
+          zip -r ../app.zip . \
+            -x '.venv/*' 'tests/*' '__pycache__/*' '*/__pycache__/*' '*.pyc' \
+               '.pytest_cache/*' '.coverage' 'coverage.xml' 'htmlcov/*' \
+               'pyproject.toml' '.flake8' 'requirements-dev.txt'
+          unzip -l ../app.zip
+
+      - name: Upload app-package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-package
+          path: app.zip
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # Terraform formatting, validation and static security analysis (checkov).
+  # ---------------------------------------------------------------------------
+  infra-quality:
+    name: Infrastructure quality
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false # plain binary output, no wrapper noise
+
+      - name: terraform fmt -check (both roots)
+        run: terraform fmt -check -recursive -diff
+        working-directory: infrastructure/terraform
+
+      # -backend=false: no Azure credentials in CI, validation needs none.
+      - name: terraform validate (application root)
+        run: terraform init -backend=false -input=false && terraform validate
+        working-directory: infrastructure/terraform
+
+      - name: terraform validate (bootstrap root)
+        run: terraform init -backend=false -input=false && terraform validate
+        working-directory: infrastructure/terraform/bootstrap
+
+      # Policy-as-code; the skip list with justifications lives in security/checkov.yml.
+      - name: Checkov (IaC security scan)
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infrastructure/terraform
+          framework: terraform
+          config_file: security/checkov.yml
+          soft_fail: false # any unskipped failure fails CI
+          output_format: cli
+
+  # ---------------------------------------------------------------------------
+  # pipelines/ is the mandated source of truth; GitHub executes .github/workflows/.
+  # Fail if someone edited one side without running scripts/sync-pipelines.sh.
+  # ---------------------------------------------------------------------------
+  pipeline-sync-check:
+    name: Verify .github/workflows mirrors pipelines/
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify .github/workflows mirrors pipelines/
+        run: diff -r -q --exclude=README.md --exclude=.gitkeep pipelines .github/workflows

@@ -1,0 +1,121 @@
+# QA: deeper quality gate, triggered on demand by pushing a QA tag (git tag QA-1 && git push --tags).
+# Produces human-readable reports in the run summary and an HTML coverage report artifact.
+name: "QA"
+
+on:
+  push:
+    tags: ["QA", "QA-*"]
+  workflow_dispatch:
+
+# QA never deploys, so a newer run may cancel an older one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Static analysis: style, formatting, security, maintainability score.
+  # ---------------------------------------------------------------------------
+  code-quality:
+    name: Code quality
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: application
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: application/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # Each tool writes a section into the job summary; `tee` keeps it in the log as well.
+      - name: flake8 (style, with statistics)
+        run: |
+          echo "## flake8" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          flake8 --statistics --count 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+          echo "exit code: ${status:-0}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit "${status:-0}"
+
+      - name: black (format check)
+        run: |
+          echo "## black" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          black --check --diff . 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit "${status:-0}"
+
+      - name: bandit (security)
+        run: |
+          echo "## bandit" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          bandit -r app.py -f txt 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit "${status:-0}"
+
+      # Maintainability gate: pylint score must be >= 8/10 (config in pyproject.toml).
+      - name: pylint (score >= 8)
+        run: |
+          echo "## pylint" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          pylint app.py --fail-under=8 2>&1 | tee -a "$GITHUB_STEP_SUMMARY" || status=$?
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          exit "${status:-0}"
+
+  # ---------------------------------------------------------------------------
+  # Tests with a hard coverage threshold and an HTML report for reviewers.
+  # ---------------------------------------------------------------------------
+  test-coverage:
+    name: Tests & coverage
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: application
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: application/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # Fails the job if total coverage drops below 80 %.
+      - name: pytest with coverage (fail under 80%)
+        run: pytest --cov=. --cov-report=xml --cov-report=html --cov-fail-under=80 -q
+
+      - name: Coverage table -> job summary
+        if: always()
+        run: |
+          echo "## Coverage" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          coverage report -m >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload HTML coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: application/htmlcov
+          retention-days: 14

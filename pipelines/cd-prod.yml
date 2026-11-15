@@ -1,0 +1,87 @@
+# CD - TEST (promotion)
+#
+# The assignment names this file cd-prod.yml. The second required Azure environment in this
+# assessment is TEST, so this workflow PROMOTES the artifact that was built and verified in DEV
+# (by "CD - DEV") to the TEST Web App — same zip, no rebuild, after a manual approval on the
+# GitHub Environment "test" (required reviewer). Adding PROD later = one more job with
+# `environment: prod` that promotes the same artifact again.
+name: "CD - TEST (promotion)"
+
+on:
+  # Fires when "CD - DEV" finishes on main (success or failure; filtered in the job `if`).
+  workflow_run:
+    workflows: ["CD - DEV"]
+    types: [completed]
+    branches: [main]
+  # Manual promotion/re-promotion of a specific CD - DEV run.
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Run ID of the CD - DEV run whose app-package artifact should be promoted"
+        required: true
+        type: string
+
+# Never cancel an in-flight promotion.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+# actions:read is required to download an artifact from ANOTHER workflow run.
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  promote-test:
+    name: Promote DEV artifact to TEST
+    # Only promote a green DEV deployment (or an explicit manual request).
+    if: github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    # GitHub Environment "test" has a required reviewer -> this job pauses for manual approval.
+    environment:
+      name: test
+      url: ${{ vars.APP_URL }}
+    env:
+      # Commit that produced the artifact (for APP_VERSION); falls back to current sha on dispatch.
+      SOURCE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      SOURCE_RUN_ID: ${{ github.event.workflow_run.id || inputs.run_id }}
+    steps:
+      - name: Checkout (for smoke-test script)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+
+      # Download the SAME app-package that was deployed to DEV: build once, promote everywhere.
+      - name: Download app-package from the CD - DEV run
+        uses: actions/download-artifact@v4
+        with:
+          name: app-package
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy app.zip to TEST App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: app.zip
+
+      - name: Set APP_VERSION app setting
+        run: |
+          az webapp config appsettings set \
+            --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --settings APP_VERSION="${SOURCE_SHA::7}" \
+            --output none
+          echo "APP_VERSION=${SOURCE_SHA::7} (from CD - DEV run ${SOURCE_RUN_ID})"
+
+      - name: Smoke test (expects env=test)
+        run: bash scripts/smoke-test.sh "${{ vars.APP_URL }}" test "${SOURCE_SHA::7}"
+
+      - name: Azure logout
+        if: always()
+        run: az logout || true

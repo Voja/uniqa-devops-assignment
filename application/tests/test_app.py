@@ -40,15 +40,25 @@ def test_parse_sql_connection_string():
         "Server=tcp:sql-uniqa-abc12.database.windows.net,1433;Database=sqldb-uniqa-dev;"
         "Uid=sqladminuser;Pwd=s3cr=et;Encrypt=yes;TrustServerCertificate=no;Connection Timeout=30;"
     )
-    assert cfg == {"server": "sql-uniqa-abc12.database.windows.net", "port": 1433,
-                   "database": "sqldb-uniqa-dev", "user": "sqladminuser", "password": "s3cr=et"}
+    assert cfg == {
+        "server": "sql-uniqa-abc12.database.windows.net",
+        "port": 1433,
+        "database": "sqldb-uniqa-dev",
+        "user": "sqladminuser",
+        "password": "s3cr=et",
+    }
 
     # "User ID"/"Password" aliases, mixed-case keys, no tcp: prefix, no port -> default 1433.
     cfg = parse_sql_connection_string(
         "SERVER=myhost.example.com; database=db1; User ID=alice; Password=pw; Encrypt=yes"
     )
-    assert cfg == {"server": "myhost.example.com", "port": 1433, "database": "db1",
-                   "user": "alice", "password": "pw"}
+    assert cfg == {
+        "server": "myhost.example.com",
+        "port": 1433,
+        "database": "db1",
+        "user": "alice",
+        "password": "pw",
+    }
 
     # Non-default port and "Data Source"/"Initial Catalog" ADO.NET synonyms.
     cfg = parse_sql_connection_string("Data Source=tcp:h,1444;Initial Catalog=c;Uid=u;Pwd=p")

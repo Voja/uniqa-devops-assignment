@@ -1,0 +1,48 @@
+# Checkov configuration used by CI (pipelines/ci.yml -> bridgecrewio/checkov-action, soft_fail: false).
+# Scans BOTH Terraform roots (infrastructure/terraform and its bootstrap/ sub-folder).
+# Every skipped check has a one-line justification; anything not listed here fails the build.
+# Run locally:  pip install checkov && checkov --config-file security/checkov.yml
+framework:
+  - terraform
+directory:
+  - infrastructure/terraform
+quiet: true   # only print failed checks
+compact: true # no code blocks in the output
+
+skip-check:
+  # ---- Web App (azurerm_linux_web_app) ---------------------------------------------------------
+  - CKV_AZURE_13  # App Service Authentication (Easy Auth): API demo without AAD login; auth is out of scope
+  - CKV_AZURE_17  # Incoming client certificates (mTLS): not applicable to a public demo API
+  - CKV_AZURE_88  # Azure Files mount: the app is stateless, no shared storage needed
+  - CKV_AZURE_71  # Managed identity: a system-assigned identity IS configured; listed defensively for older rule versions
+  - CKV_AZURE_222 # Public network access disabled: intentionally ON so reviewer + GitHub-hosted runner (Kudu) can reach the app; private ingress exists via Private Endpoint (see infrastructure/terraform/README.md)
+  # ---- Shared App Service Plan (bootstrap) ------------------------------------------------------
+  - CKV_AZURE_211 # Production-grade SKU: B1 chosen for cost; the plan is "existing infra" the assignment gives us
+  - CKV_AZURE_212 # >= 2 instances for failover: single B1 worker is sufficient for dev/test
+  - CKV_AZURE_225 # Zone-redundant plan: requires Premium v3, out of budget for a demo
+  # ---- SQL Server / database --------------------------------------------------------------------
+  - CKV_AZURE_23  # SQL auditing on: paid feature (storage/LAW ingestion), out of scope for the demo
+  - CKV_AZURE_24  # SQL auditing retention > 90 days: see above
+  - CKV_AZURE_25  # SQL threat detection: Defender for SQL is a paid add-on, out of scope
+  - CKV2_AZURE_2  # SQL Vulnerability Assessment: requires Defender + storage account, out of scope
+  - CKV2_AZURE_27 # Azure AD admin on SQL: SQL auth is used for the demo connection string; AAD/managed identity is the production follow-up
+  - CKV2_AZURE_45 # SQL public access: firewall restricted to the admin IP only; app traffic uses the Private Endpoint
+  - CKV_AZURE_113 # SQL public network access disabled: same as above, admin access needed from the engineer's IP
+  - CKV_AZURE_224 # SQL ledger: tamper-evidence not required for demo data
+  - CKV_AZURE_229 # SQL zone redundancy: not available on Basic tier
+  # ---- Networking -------------------------------------------------------------------------------
+  - CKV2_AZURE_31 # NSG on every subnet: integration subnet is delegated to App Service, PE subnet only hosts private endpoints; NSGs would be added in production
+  # ---- tfstate storage account (bootstrap) — hardening beyond demo scope ----------------------
+  - CKV_AZURE_33  # Queue service logging: queues are not used
+  - CKV_AZURE_35  # Default network rule deny: Terraform runs from GitHub-hosted runners with dynamic IPs
+  - CKV_AZURE_59  # Disallow public access: allow_nested_items_to_be_public is already false; rule also wants public_network_access_enabled = false (see CKV_AZURE_35)
+  - CKV_AZURE_190 # Blob public access: already disabled via allow_nested_items_to_be_public = false; legacy rule
+  - CKV_AZURE_206 # Replication (GRS/ZRS): LRS is sufficient for dev/test state; state is also recoverable from code
+  - CKV_AZURE_244 # Public access to blobs: duplicate of CKV_AZURE_190
+  - CKV2_AZURE_1  # Customer-managed keys: Microsoft-managed encryption at rest is acceptable for the demo
+  - CKV2_AZURE_21 # Blob read logging: diagnostic settings on storage are out of scope for the demo
+  - CKV2_AZURE_33 # Private endpoint for storage: Terraform runs from GitHub-hosted runners, needs public endpoint
+  - CKV2_AZURE_38 # Soft-delete: nice-to-have for state recovery; would be enabled in production
+  - CKV2_AZURE_40 # Shared key auth disabled: the azurerm backend uses shared-key/SAS by default in this setup
+  - CKV2_AZURE_41 # SAS expiration policy: no SAS tokens are issued manually
+  - CKV2_AZURE_47 # Blob anonymous access: duplicate of CKV_AZURE_190 for newer provider schema

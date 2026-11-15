@@ -1,0 +1,117 @@
+# CD - DEV: every merge to main builds ONE immutable artifact, deploys it to the DEV Web App
+# and smoke-tests it. cd-prod.yml later promotes this exact artifact to TEST.
+name: "CD - DEV"
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Deployments queue up instead of cancelling each other (never interrupt a running deploy).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Quick re-test on the merged commit, then package.
+  # ---------------------------------------------------------------------------
+  build:
+    name: Test & package
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: application
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: application/requirements*.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      # Full quality gates already ran in CI on the PR; this is a sanity re-run on the merge commit.
+      - name: Unit tests (quick)
+        run: pytest -q
+
+      # Same exclusions as CI: source + requirements.txt; App Service runs pip install (Oryx).
+      - name: Build deployment package (app.zip)
+        run: |
+          zip -r ../app.zip . \
+            -x '.venv/*' 'tests/*' '__pycache__/*' '*/__pycache__/*' '*.pyc' \
+               '.pytest_cache/*' '.coverage' 'coverage.xml' 'htmlcov/*' \
+               'pyproject.toml' '.flake8' 'requirements-dev.txt'
+          unzip -l ../app.zip
+
+      - name: Upload app-package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-package
+          path: app.zip
+          retention-days: 30 # must outlive the TEST promotion window
+
+  # ---------------------------------------------------------------------------
+  # Deploy the artifact to DEV and verify it end-to-end.
+  # ---------------------------------------------------------------------------
+  deploy-dev:
+    name: Deploy to DEV
+    needs: build
+    runs-on: ubuntu-latest
+    # GitHub Environment "dev": holds AZURE_WEBAPP_NAME / APP_URL variables; URL shows on the run page.
+    environment:
+      name: dev
+      url: ${{ vars.APP_URL }}
+    steps:
+      # Only needed for scripts/smoke-test.sh.
+      - name: Checkout (for smoke-test script)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: scripts
+
+      - name: Download app-package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: app-package
+
+      # Service principal JSON (clientId, clientSecret, subscriptionId, tenantId) stored as a secret.
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy app.zip to App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ vars.AZURE_WEBAPP_NAME }}
+          package: app.zip
+
+      # Stamp the deployed commit into APP_VERSION (surfaced by GET /health).
+      # Terraform ignores changes to this key, so the next terraform apply will not revert it.
+      - name: Set APP_VERSION app setting
+        run: |
+          az webapp config appsettings set \
+            --name "${{ vars.AZURE_WEBAPP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --settings APP_VERSION="${GITHUB_SHA::7}" \
+            --output none
+          echo "APP_VERSION=${GITHUB_SHA::7}"
+
+      # Waits for /health (env=dev), then creates and lists a transaction. Fails the job on any error.
+      - name: Smoke test
+        run: bash scripts/smoke-test.sh "${{ vars.APP_URL }}" dev "${GITHUB_SHA::7}"
+
+      - name: Azure logout
+        if: always()
+        run: az logout || true

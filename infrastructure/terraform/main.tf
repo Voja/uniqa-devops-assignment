@@ -92,6 +92,8 @@ resource "azurerm_linux_web_app" "main" {
 
   # Platform logs on the local file system (short retention); long-term logs go to LAW via diagnostics.
   logs {
+    detailed_error_messages = true # keep HTTP 4xx/5xx detail pages for troubleshooting (CKV_AZURE_65)
+    failed_request_tracing  = true # capture failed-request traces (CKV_AZURE_66)
     http_logs {
       file_system {
         retention_in_days = 3

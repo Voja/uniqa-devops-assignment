@@ -1,4 +1,5 @@
 """Minimal transactions API (Flask) used for the DevOps assignment."""
+
 import os
 import sqlite3
 
@@ -20,9 +21,13 @@ def _is_mssql():
     return bool(os.environ.get(CONN_ENV))
 
 
-def _ph():
-    """Parameter placeholder for the active backend: pymssql uses %s, sqlite uses ?."""
-    return "%s" if _is_mssql() else "?"
+def _sql(stmt):
+    """Adapt a '?'-placeholder statement to the active driver's paramstyle (pymssql uses %s).
+
+    All statements are written once in sqlite/DB-API 'qmark' style; values are always passed
+    as bound parameters, so this only ever rewrites the placeholder token, never data.
+    """
+    return stmt.replace("?", "%s") if _is_mssql() else stmt
 
 
 def parse_sql_connection_string(cs):
@@ -66,22 +71,32 @@ def get_connection():
         import pymssql  # lazy import: pure wheel, no ODBC driver; tests never need it
 
         cfg = parse_sql_connection_string(os.environ[CONN_ENV])
-        conn = pymssql.connect(server=cfg["server"], port=cfg["port"], user=cfg["user"],
-                               password=cfg["password"], database=cfg["database"],
-                               login_timeout=30, autocommit=False)
+        conn = pymssql.connect(
+            server=cfg["server"],
+            port=cfg["port"],
+            user=cfg["user"],
+            password=cfg["password"],
+            database=cfg["database"],
+            login_timeout=30,
+            autocommit=False,
+        )
     else:
         if _sqlite is None:
             _sqlite = sqlite3.connect(":memory:", check_same_thread=False)
         conn = _sqlite
     if not _schema_ready:  # create the table on first use
         if _is_mssql():
-            ddl = ("IF OBJECT_ID('Transactions') IS NULL CREATE TABLE Transactions ("
-                   "Id INT IDENTITY(1,1) PRIMARY KEY, Amount DECIMAL(18,2) NOT NULL, "
-                   "Description NVARCHAR(200), CreatedAt DATETIME DEFAULT GETDATE())")
+            ddl = (
+                "IF OBJECT_ID('Transactions') IS NULL CREATE TABLE Transactions ("
+                "Id INT IDENTITY(1,1) PRIMARY KEY, Amount DECIMAL(18,2) NOT NULL, "
+                "Description NVARCHAR(200), CreatedAt DATETIME DEFAULT GETDATE())"
+            )
         else:
-            ddl = ("CREATE TABLE IF NOT EXISTS Transactions ("
-                   "Id INTEGER PRIMARY KEY AUTOINCREMENT, Amount DECIMAL(18,2) NOT NULL, "
-                   "Description NVARCHAR(200), CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP)")
+            ddl = (
+                "CREATE TABLE IF NOT EXISTS Transactions ("
+                "Id INTEGER PRIMARY KEY AUTOINCREMENT, Amount DECIMAL(18,2) NOT NULL, "
+                "Description NVARCHAR(200), CreatedAt DATETIME DEFAULT CURRENT_TIMESTAMP)"
+            )
         conn.cursor().execute(ddl)
         conn.commit()
         _schema_ready = True
@@ -90,31 +105,35 @@ def get_connection():
 
 def _to_dict(row):
     """Convert a DB row (Id, Amount, Description, CreatedAt) into JSON-friendly dict."""
-    return {"id": row[0], "amount": float(row[1]), "description": row[2],
-            "created_at": str(row[3])}
+    return {"id": row[0], "amount": float(row[1]), "description": row[2], "created_at": str(row[3])}
 
 
 @app.get("/health")
 def health():
-    # Liveness/readiness probe used by App Service health check and monitoring.
-    return jsonify(status="ok", env=os.environ.get("APP_ENV", "local"),
-                   version=os.environ.get("APP_VERSION", "0.0.0"))
+    """Liveness/readiness probe used by the App Service health check and monitoring."""
+    return jsonify(
+        status="ok",
+        env=os.environ.get("APP_ENV", "local"),
+        version=os.environ.get("APP_VERSION", "0.0.0"),
+    )
 
 
 @app.get("/transactions")
 def list_transactions():
-    # Return the 20 most recent transactions (TOP vs LIMIT depends on dialect).
+    """Return the 20 most recent transactions (TOP vs LIMIT depends on dialect)."""
     top, limit = ("TOP 20", "") if _is_mssql() else ("", "LIMIT 20")
     cur = get_connection().cursor()
     # {top}/{limit} are hard-coded literals above, never user input -> safe to format.
-    cur.execute(f"SELECT {top} Id, Amount, Description, CreatedAt "  # nosec B608
-                f"FROM Transactions ORDER BY Id DESC {limit}")
+    cur.execute(
+        f"SELECT {top} Id, Amount, Description, CreatedAt "  # nosec B608
+        f"FROM Transactions ORDER BY Id DESC {limit}"
+    )
     return jsonify([_to_dict(r) for r in cur.fetchall()])
 
 
 @app.post("/transactions")
 def create_transaction():
-    # Validate input: amount is required and must be a real number (bool excluded).
+    """Insert a transaction; amount is required and must be a real number (bool excluded)."""
     data = request.get_json(silent=True) or {}
     amount = data.get("amount")
     if isinstance(amount, bool) or not isinstance(amount, (int, float)):
@@ -122,19 +141,15 @@ def create_transaction():
     description = str(data.get("description", ""))[:200]
     conn = get_connection()
     cur = conn.cursor()
-    # Only the placeholder token (%s or ?) is interpolated; values are always bound parameters.
-    p = _ph()
     if _is_mssql():  # T-SQL: OUTPUT returns the new identity in the same statement
-        sql = ("INSERT INTO Transactions (Amount, Description) OUTPUT INSERTED.Id "
-               f"VALUES ({p}, {p})")  # nosec B608
+        insert = "INSERT INTO Transactions (Amount, Description) OUTPUT INSERTED.Id VALUES (?, ?)"
     else:  # sqlite: the new id is available via cursor.lastrowid
-        sql = f"INSERT INTO Transactions (Amount, Description) VALUES ({p}, {p})"  # nosec B608
-    cur.execute(sql, (amount, description))
+        insert = "INSERT INTO Transactions (Amount, Description) VALUES (?, ?)"
+    cur.execute(_sql(insert), (amount, description))
     new_id = int(cur.fetchone()[0]) if _is_mssql() else cur.lastrowid
     conn.commit()
-    sql = ("SELECT Id, Amount, Description, CreatedAt FROM Transactions "
-           f"WHERE Id = {p}")  # nosec B608
-    cur.execute(sql, (new_id,))
+    select = "SELECT Id, Amount, Description, CreatedAt FROM Transactions WHERE Id = ?"
+    cur.execute(_sql(select), (new_id,))
     return jsonify(_to_dict(cur.fetchone())), 201
 
 

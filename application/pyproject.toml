@@ -1,0 +1,15 @@
+# Tool configuration only (no [project] table): App Service/Oryx installs from requirements.txt.
+
+[tool.black]
+line-length = 100 # same limit as .flake8 so the two tools never disagree
+
+[tool.pylint.main]
+# pymssql is a C extension; let pylint introspect it instead of reporting no-member.
+extension-pkg-allow-list = ["pymssql"]
+
+[tool.pylint."messages control"]
+disable = [
+  "global-statement",        # module-level sqlite connection is intentional (see app.py)
+  "import-outside-toplevel", # pymssql is imported lazily so tests need no SQL driver
+  "invalid-name",            # _sqlite/_schema_ready are mutable module state, not constants
+]
